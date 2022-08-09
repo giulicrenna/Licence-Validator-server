@@ -6,13 +6,20 @@
 #include <WiFiManager.h> // https://github.com/tzapu/WiFiManager
 #include <string>
 #include <time.h>
+#include <iostream>
+#include <fstream>
 #include <stdio.h>
 #include <ArduinoJson.h>
 #include <Arduino.h>
 #include <PubSubClient.h>
 #include <LittleFS.h>
-#include "jsonizer.h"
+#include <FS.h>
+#include <algorithm>
+#include <jsonizer.h>
 #include "apMode.h"
+
+TaskHandle_t Task1; // Core 0 task initializer
+TaskHandle_t Task2;
 
 void listDir(fs::FS &fs, const char * dirname, uint8_t levels); 
 void readFile(fs::FS &fs, const char * path);
@@ -20,12 +27,18 @@ void writeFile(fs::FS &fs, const char * path, const char * message);
 void renameFile(fs::FS &fs, const char * path1, const char * path2);
 void deleteFile(fs::FS &fs, const char * path);
 void loadData(fs::FS &fs, const char * path);
-void callback(char* topic, byte* payload, unsigned int lenght);
+void loop0(void *pvParameters);
+void loop1(void *pvParameters);
+void reconnect();
+std::string callback(char* topic, byte* payload, unsigned int lenght);
+String readLicences(fs::FS &fs, const char * path);
 
 WiFiClient espClient; 
 apMode apInstance;
 PubSubClient client(espClient);
 JSONIZER jsonSession;
+
+std::vector<std::string> dataVector;
 
 String deviceName;
 String staticIpAP;
@@ -38,17 +51,18 @@ String smtpSender;
 String smtpPass;
 String SmtpReceiver;
 String SmtpServer;
+String incommingRequest = "";
+std::string licences;
 const char* userName;
 const char* password;
 const int port = 1883;
 unsigned long previousTimeMQTT = 0;
 
 void setup(){
+  // Dual Core configuration
+  // xTaskCreatePinnedToCore: (Loop Function, Task Name, Clock size, function parameter, Core priority, Task instance, core where loop will be executed)
+  // Serial config
   Serial.begin(115000);
-
-  delay(2000);
-
-
   //File System and configuration setup
   if(!LittleFS.begin()){
     Serial.println("SPIFFS Mount Failed");
@@ -56,37 +70,60 @@ void setup(){
   }
   listDir(LittleFS, "/", 0);
   readFile(LittleFS, "/config.json");
-  loadData(LittleFS, "/config.json"); 
-  //AP setup
+  //readFile(LittleFS, "/licences.txt");
+  loadData(LittleFS, "/config.json");
+  //AP setup.toSJSON()
   apInstance.setupServer(staticIpAP, gatewayAP, subnetMaskAP);
 
   //MQTT
   client.setServer(host.c_str(), port);
   client.setCallback(callback); //Callback 
+  xTaskCreatePinnedToCore(loop0, "core_0", 10000, NULL, 1, &Task1, 0);
+  xTaskCreatePinnedToCore(loop1, "core_1", 10000, NULL, 1, &Task2, 1);
 }
 
+void loop(){}
 
-void loop(){
-  if(!client.connected()){
-    reconnect();
+void loop1(void *pvParameters){
+  for(;;){
+    std::string cores = String(ESP.getChipCores()).c_str();
+    std::string frecuency = String(ESP.getCpuFreqMHz()).c_str();
+    std::string sketchSize = String(ESP.getSketchSize()).c_str();
+    std::string freeHeap = String(ESP.getFreeHeap()).c_str();
+    std::string freeRam = String(ESP.getFreePsram()).c_str();
+    dataVector.push_back("Server");dataVector.push_back("Giuli-Licence-Server");dataVector.push_back("Cores");dataVector.push_back(cores);
+    dataVector.push_back("FreeRam");dataVector.push_back(freeRam);dataVector.push_back("CPUfrecuency");dataVector.push_back(frecuency);
+    dataVector.push_back("SketchSize");dataVector.push_back(sketchSize);dataVector.push_back("FreeHeap");dataVector.push_back(freeHeap);   
+    
+    if(!client.connected()){
+      reconnect();
+    }
+
+    //Serial.println(String(xPortGetCoreID()));
+    if(client.connected()){
+      Serial.println(jsonSession.toSJSON(dataVector).c_str());
+      client.publish(root_topic_publish.c_str(), jsonSession.toSJSON(dataVector).c_str());
+      delay(1000);
+    }
+    
+    dataVector.clear();
+    client.loop();
   }
+}
 
-  std::string licences = jsonSession.readFileIntoString("licences.json");
-
-  if(client.connected()){
-    unsigned long currentTime = millis();
-    if(currentTime - previousTimeMQTT >= 500){
-      //std::string jsonData = jsonSession.toSJSON(dataVector);
-      Serial.println(licences.c_str());
-      client.publish(root_topic_publish.c_str(), licences.c_str());
-      previousTimeMQTT = currentTime;
+void loop0(void *pvParameters){
+  for(;;){
+    
+    if(incommingRequest != "" ){
+      std::vector<std::string> request = jsonSession.toVECTOR(incommingRequest.c_str());
+      Serial.println(request.at(3).c_str());
+      delay(10000);
     }
   }
-  client.loop();
+  vTaskDelay(10);
 }
 
-
-void callback(char* topic, byte* payload, unsigned int lenght){
+std::string callback(char* topic, byte* payload, unsigned int lenght){
   String incomingMessage = "";
   Serial.print("desde > ");
   Serial.print(topic);
@@ -95,14 +132,30 @@ void callback(char* topic, byte* payload, unsigned int lenght){
     incomingMessage += (char)payload[n];
   }
   incomingMessage.trim();
-  Serial.println(" >>" + incomingMessage);
+
+  incommingRequest = incomingMessage;
+ 
+  /*
+  std::vector<std::string> request = jsonSession.toVECTOR(incomingMessage.c_str());
+  std::vector<std::string> sendOK, sendBAD;
+  sendOK.push_back("status");sendOK.push_back("true");
+  sendBAD.push_back("status");sendBAD.push_back("false");
+  
+  if(String(jsonSession.readFileIntoString("/licences.txt").c_str()).indexOf(request.at(3).c_str()) > 0){
+    Serial.println(jsonSession.toSJSON(sendOK).c_str());
+    client.publish(root_topic_publish.c_str(), jsonSession.toSJSON(sendOK).c_str());   
+  }else{Serial.println(jsonSession.toSJSON(sendBAD).c_str());client.publish(root_topic_publish.c_str(), jsonSession.toSJSON(sendBAD).c_str());}
+  
+  request.clear();sendOK.clear();sendBAD.clear();
+  */
+  return incomingMessage.c_str();
 }
 
 
 void reconnect(){
   int count = 0;
   while(!client.connected()){
-    String deviceId = String("DarkFlow_" + ESP.getChipId());
+    String deviceId = String("Server");
     String message = "Intentando conectar a: " + String(host) + ", Con ID: " + deviceId; 
     if(client.connect(deviceId.c_str())){
       Serial.println("Conexión Exitosa");
@@ -124,7 +177,7 @@ void reconnect(){
 void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
     Serial.printf("Listing directory: %s\r\n", dirname);
 
-    File root = fs.open(dirname, "r");
+    File root = fs.open(dirname);
     if(!root){
         Serial.println("- failed to open directory");
         return;
@@ -155,7 +208,7 @@ void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
 void readFile(fs::FS &fs, const char * path){
     Serial.printf("Reading file: %s\r\n", path);
 
-    File file = fs.open(path, "r");
+    File file = fs.open(path);
     if(!file || file.isDirectory()){
         Serial.println("...failed to open file for reading");
         return;
@@ -170,8 +223,19 @@ void readFile(fs::FS &fs, const char * path){
     file.close();   
 }
 
+String readLicences(fs::FS &fs, const char * path){
+    std::ifstream inFile;
+    inFile.open(path); //open the input file
+
+    std::stringstream strStream;
+    strStream << inFile.rdbuf(); //read the file
+    std::string str = strStream.str();
+
+    return String(str.c_str());
+}
+
 void loadData(fs::FS &fs, const char * path){
-    File file_ = fs.open(path, "r");
+    File file_ = fs.open(path);
     String content;
     if(!file_.available()){
       Serial.println("Couldn't open the file");  
@@ -266,7 +330,7 @@ void testFileIO(fs::FS &fs, const char * path){
     Serial.printf(" - %u bytes written in %u ms\r\n", 2048 * 512, end);
     file.close();
 
-    file = fs.open(path, "r");
+    file = fs.open(path);
     start = millis();
     end = start;
     i = 0;

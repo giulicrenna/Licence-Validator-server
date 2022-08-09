@@ -1,13 +1,19 @@
 {
-    "network" : {
-        "ip" : "",
-        "subnetMask" : "",
-        "gateway" : ""
+    "device": {
+      "UID": "ESP32-D0WDQ6",
+      "name": "Giuli-Device"
+    },
+    "network": {
+      "SSID": "Fibertel WiFi957 2.4Gh",
+      "wifiPassword": "0046100675",
+      "ip": "",
+      "subnetMask": "",
+      "gateway": ""
     },
     "mqtt" : {
-        "host":"mqtt.darkflow.com.ar",
-        "root_topic_subscribe":"giuli/testing",
-        "root_topic_publish":"giuli/data",
+        "host":"test.mosquitto.org",
+        "root_topic_subscribe":"/giulicrenna/request",
+        "root_topic_publish":"/giulicrenna/answer",
         "userName":"",
         "password":"",
         "port":"1883"

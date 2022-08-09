@@ -30,7 +30,7 @@ bool shouldSaveConfig = false;
 
 class apMode{
     private:
-    const char* ssid     = String("Darkflow-" + ESP.getChipId()).c_str();
+    //String ssid = String("Darkflow-") + ESP.getChipModel();
     const char* password = "123456789";
     const char* _customHtml_checkbox = "type=\"checkbox\""; 
     /*
@@ -193,8 +193,6 @@ class apMode{
           Serial.println("*** Resetting WiFi credentials ***");
           delay(5000);
           myManager.resetSettings();
-          ESP.eraseConfig();
-          ESP.reset();
           ESP.restart();
         }
         //<-
@@ -216,7 +214,7 @@ void changeCredentials(fs::FS &fs, const char * path, String mailReceiver,
     }
     StaticJsonDocument<1024> config;
 
-    config["device"]["UID"] = std::to_string(ESP.getChipId()).c_str();
+    config["device"]["UID"] = ESP.getChipModel();
     config["device"]["name"] = deviceName.c_str();
     config["network"]["SSID"] = ssid.c_str();
     config["network"]["wifiPassword"] = password.c_str();
@@ -293,7 +291,7 @@ bool setup_wifi(){
 }
 */
 bool isConfigured(const char * path){
-    File file_ = LittleFS.open(path, "r");
+    File file_ = LittleFS.open(path);
     String content;
     bool isConnected;
     if(!file_.available()){

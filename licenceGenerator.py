@@ -2,7 +2,7 @@ import json
 import random as r
 from secrets import choice
 
-dict = {}
+
 characters = ["A", "B", "C", "D", "E", "F", "G", "H",
                 "I", "J", "K", "L", "M",
                 "N", "O", "P", "Q", "R",
@@ -15,20 +15,14 @@ duet = ["A", "B", "C", "D", "E", "F", "G", "H",
 
 def generateLicence():
     licenceN = 0
+    f = open("licences.txt", "a")
     for char in duet:
-        for i in range(500):
+        for i in range(200):
             licenceN += 1
-            licence = "A" + char + r.choice(characters) + r.choice(characters) + r.choice(characters) + r.choice(characters) + r.choice(characters) + r.choice(characters) + "-" +  r.choice(characters) + r.choice(characters) + r.choice(characters) + r.choice(characters) + r.choice(characters) + r.choice(characters) + r.choice(characters) + r.choice(characters)
-            licenceName = "Licence_" + str(licenceN)
-            dict[licenceName] = licence
-    f = open("licences_Idented.json", "a")
-    f.write(json.dumps(dict, indent=4))
-    f.close()
-    f = open("licences.json", "a")
-    f.write(json.dumps(dict))
+            licence = "A" + char + r.choice(characters) + r.choice(characters) + r.choice(characters) + r.choice(characters) + r.choice(characters) + r.choice(characters) + "-" +  r.choice(characters) + r.choice(characters) + r.choice(characters) + r.choice(characters) + r.choice(characters) + r.choice(characters) + r.choice(characters) + r.choice(characters) + "," 
+            f.write(licence)
     f.close()
 
 
 
 generateLicence()
-print(json.dumps(dict, indent=4))
